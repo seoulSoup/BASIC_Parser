@@ -9,17 +9,20 @@ basic_grammar_v1 = """
              | assignment
              | print_statement
              | end_statement
-             | NEWLINE*
+             | empty_line
     
-    if_statement: "IF" expression "THEN" NEWLINE+
-                    statement*
-                  ("ELSE" "IF" expression "THEN" NEWLINE+ statement*)*
-                  ("ELSE" NEWLINE+ statement*)?
-                  "END" "IF" NEWLINE+
+    if_statement: "IF" expression "THEN" NEWLINE
+                    statement_block?
+                  ("ELSE" "IF" expression "THEN" NEWLINE statement_block?)*
+                  ("ELSE" NEWLINE statement_block?)?
+                  "END" "IF" NEWLINE
     
-    assignment: IDENTIFIER "=" expression NEWLINE+
-    print_statement: "PRINT" expression NEWLINE+
-    end_statement: "END" NEWLINE+
+    statement_block: statement+
+    
+    assignment: IDENTIFIER "=" expression NEWLINE
+    print_statement: "PRINT" expression NEWLINE
+    end_statement: "END" NEWLINE
+    empty_line: NEWLINE
     
     expression: term (add_op term)*
     term: factor (mul_op factor)*
@@ -67,17 +70,20 @@ basic_grammar_v2 = """
              | assignment
              | print_statement
              | end_statement
-             | NEWLINE*
+             | empty_line
     
-    if_statement: "IF" expression "THEN" NEWLINE+
-                    statement*
-                  ("ELSEIF" expression "THEN" NEWLINE+ statement*)*
-                  ("ELSE" NEWLINE+ statement*)?
-                  "ENDIF" NEWLINE+
+    if_statement: "IF" expression "THEN" NEWLINE
+                    statement_block?
+                  ("ELSEIF" expression "THEN" NEWLINE statement_block?)*
+                  ("ELSE" NEWLINE statement_block?)?
+                  "ENDIF" NEWLINE
     
-    assignment: IDENTIFIER "=" expression NEWLINE+
-    print_statement: "PRINT" expression NEWLINE+
-    end_statement: "END" NEWLINE+
+    statement_block: statement+
+    
+    assignment: IDENTIFIER "=" expression NEWLINE
+    print_statement: "PRINT" expression NEWLINE
+    end_statement: "END" NEWLINE
+    empty_line: NEWLINE
     
     expression: term (add_op term)*
     term: factor (mul_op factor)*
@@ -246,7 +252,90 @@ END
         import traceback
         traceback.print_exc()
 
+# IF문 전용 테스트
+def test_if_statement():
+    if_code = """IF X > 5 THEN
+PRINT "BIG"
+ENDIF
+"""
+    
+    print("=== IF문 테스트 ===")
+    print("코드:")
+    print(repr(if_code))
+    print(if_code)
+    
+    try:
+        preprocessed = preprocess_basic_code(if_code)
+        print("전처리된 코드:")
+        print(repr(preprocessed))
+        print(preprocessed)
+        
+        parser = Lark(basic_grammar_v2, parser='lalr')
+        tree = parser.parse(preprocessed)
+        print("파싱 성공!")
+        print(tree.pretty())
+    except Exception as e:
+        print(f"파싱 실패: {e}")
+        import traceback
+        traceback.print_exc()
+
+# 더 안전한 문법 (최소한의 구조)
+safe_grammar = """
+    start: statement+
+    
+    statement: assignment
+             | print_statement
+             | end_statement
+             | empty_line
+    
+    assignment: IDENTIFIER "=" expression NEWLINE
+    print_statement: "PRINT" expression NEWLINE
+    end_statement: "END" NEWLINE
+    empty_line: NEWLINE
+    
+    expression: term (add_op term)*
+    term: factor (mul_op factor)*
+    factor: NUMBER | IDENTIFIER | "(" expression ")" | string
+    
+    add_op: "+" | "-"
+    mul_op: "*" | "/"
+    
+    string: ESCAPED_STRING
+    
+    IDENTIFIER: /[a-zA-Z][a-zA-Z0-9]*/
+    NUMBER: /\d+(\.\d+)?/
+    ESCAPED_STRING: /"[^"]*"/
+    NEWLINE: /\r?\n/
+    
+    %import common.WS
+    %ignore WS
+"""
+
+def test_safe_grammar():
+    safe_code = """X = 5 * 3
+PRINT X
+END
+"""
+    
+    print("=== 안전한 문법 테스트 ===")
+    print("코드:")
+    print(safe_code)
+    
+    try:
+        parser = Lark(safe_grammar, parser='lalr')
+        tree = parser.parse(safe_code)
+        print("파싱 성공!")
+        print(tree.pretty())
+    except Exception as e:
+        print(f"파싱 실패: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    test_simple()  # 먼저 간단한 테스트
+    test_safe_grammar()  # 가장 안전한 문법부터
     print("\n" + "="*50 + "\n")
-    test_basic_parser()  # 복잡한 테스트
+    test_simple()  # 기본 테스트
+    print("\n" + "="*50 + "\n")
+    test_if_statement()  # IF문 테스트
+    print("\n" + "="*50 + "\n")
+    test_basic_parser()  # 전체 테스트
