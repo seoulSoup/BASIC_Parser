@@ -8,27 +8,19 @@ basic_grammar = r"""
 
     LINENUM: /\d+/
 
-    END_IF: "END IF"
-    ELSE_IF: "ELSE IF"
-
     statement: if_block_stmt
              | if_then_stmt
              | let_stmt
              | assign_stmt
              | print_stmt
              | goto_stmt
-             | END_IF
-             | ELSE_IF
-             
-             
-             
+             | end_stmt
 
-    
-    else_if_clause: ELSE_IF condition "THEN" block_lines 
+    else_if_clause: "ELSEIF" condition "THEN" block_lines 
     else_clause: "ELSE" NEWLINE block_lines
     if_block_stmt: if_else_block | simple_if_block
-    if_else_block: "IF" condition "THEN" NEWLINE block_lines (else_if_clause)* (else_clause)? END_IF
-    simple_if_block: "IF" condition "THEN" block_lines END_IF
+    if_else_block: "IF" condition "THEN" NEWLINE block_lines (else_if_clause)* (else_clause)? "ENDIF"
+    simple_if_block: "IF" condition "THEN" block_lines "ENDIF"
     if_then_stmt: "IF" condition "THEN" statement
 
     
