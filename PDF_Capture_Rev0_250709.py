@@ -1,36 +1,32 @@
 import fitz  # PyMuPDF
 import re
 
-def extract_figures_from_pdf(pdf_path):
+def extract_figure_tables(pdf_path):
     doc = fitz.open(pdf_path)
-    figures = {}
+    output = {}
 
     for page_num in range(len(doc)):
         page = doc[page_num]
-        image_list = page.get_images(full=True)
 
-        # 1. 텍스트 추출
-        text = page.get_text()
-        captions = re.findall(r'(Figure\s*\d+|Fig\.\s*\d+|그림\s*\d+)', text, re.IGNORECASE)
+        # 1. 텍스트 블록 단위 추출
+        blocks = page.get_text("blocks")  # (x0, y0, x1, y1, text, block_no)
+        fig_blocks = [(b[:4], b[4]) for b in blocks if re.search(r"(Figure|Table)\s*\d+", b[4], re.IGNORECASE)]
 
-        # 2. 이미지 추출 및 저장
-        for img_idx, img in enumerate(image_list):
-            xref = img[0]
-            base_image = doc.extract_image(xref)
-            img_bytes = base_image['image']
-            ext = base_image['ext']
+        for idx, (bbox, text) in enumerate(fig_blocks):
+            key = re.search(r"(Figure|Table)\s*\d+", text, re.IGNORECASE).group()
 
-            # 3. 키 결정
-            if img_idx < len(captions):
-                key = captions[img_idx]
-            else:
-                key = f'page_{page_num+1}_img{img_idx+1}'
+            # 2. 주변 박스 위로 이미지가 있을 것이라고 가정하고 사각형 위 영역 설정
+            caption_rect = fitz.Rect(*bbox)
+            search_rect = fitz.Rect(caption_rect.x0, caption_rect.y0 - 200, caption_rect.x1, caption_rect.y0)
 
-            # 4. 딕셔너리에 저장
-            figures[key] = {
-                'page': page_num + 1,
-                'image': img_bytes,
-                'ext': ext
+            # 3. 해당 영역 잘라내기
+            clip = page.get_pixmap(clip=search_rect, dpi=200)
+            img_bytes = clip.tobytes("png")
+
+            output[key] = {
+                "page": page_num + 1,
+                "image": img_bytes,
+                "ext": "png"
             }
 
-    return figures
+    return output
