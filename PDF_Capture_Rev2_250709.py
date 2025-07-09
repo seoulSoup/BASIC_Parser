@@ -9,25 +9,31 @@ basic_grammar_v1 = """
              | assignment
              | print_statement
              | end_statement
-             | NEWLINE
+             | NEWLINE*
     
-    if_statement: "IF" expression "THEN" NEWLINE
+    if_statement: "IF" expression "THEN" NEWLINE+
                     statement*
-                  ("ELSE" "IF" expression "THEN" NEWLINE statement*)*
-                  ("ELSE" NEWLINE statement*)?
-                  "END" "IF" NEWLINE
+                  ("ELSE" "IF" expression "THEN" NEWLINE+ statement*)*
+                  ("ELSE" NEWLINE+ statement*)?
+                  "END" "IF" NEWLINE+
     
-    assignment: IDENTIFIER "=" expression NEWLINE
-    print_statement: "PRINT" expression NEWLINE
-    end_statement: "END" NEWLINE
+    assignment: IDENTIFIER "=" expression NEWLINE+
+    print_statement: "PRINT" expression NEWLINE+
+    end_statement: "END" NEWLINE+
     
-    expression: term (("+" | "-") term)*
-    term: factor (("*" | "/") factor)*
-    factor: NUMBER | IDENTIFIER | "(" expression ")"
+    expression: term (add_op term)*
+    term: factor (mul_op factor)*
+    factor: NUMBER | IDENTIFIER | "(" expression ")" | string
+    
+    add_op: "+" | "-"
+    mul_op: "*" | "/"
+    
+    string: ESCAPED_STRING
     
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9]*/
-    NUMBER: /\d+/
-    NEWLINE: /\n/
+    NUMBER: /\d+(\.\d+)?/
+    ESCAPED_STRING: /"[^"]*"/
+    NEWLINE: /\r?\n/
     
     %import common.WS
     %ignore WS
@@ -61,25 +67,31 @@ basic_grammar_v2 = """
              | assignment
              | print_statement
              | end_statement
-             | NEWLINE
+             | NEWLINE*
     
-    if_statement: "IF" expression "THEN" NEWLINE
+    if_statement: "IF" expression "THEN" NEWLINE+
                     statement*
-                  ("ELSEIF" expression "THEN" NEWLINE statement*)*
-                  ("ELSE" NEWLINE statement*)?
-                  "ENDIF" NEWLINE
+                  ("ELSEIF" expression "THEN" NEWLINE+ statement*)*
+                  ("ELSE" NEWLINE+ statement*)?
+                  "ENDIF" NEWLINE+
     
-    assignment: IDENTIFIER "=" expression NEWLINE
-    print_statement: "PRINT" expression NEWLINE
-    end_statement: "END" NEWLINE
+    assignment: IDENTIFIER "=" expression NEWLINE+
+    print_statement: "PRINT" expression NEWLINE+
+    end_statement: "END" NEWLINE+
     
-    expression: term (("+" | "-") term)*
-    term: factor (("*" | "/") factor)*
-    factor: NUMBER | IDENTIFIER | "(" expression ")"
+    expression: term (add_op term)*
+    term: factor (mul_op factor)*
+    factor: NUMBER | IDENTIFIER | "(" expression ")" | string
+    
+    add_op: "+" | "-"
+    mul_op: "*" | "/"
+    
+    string: ESCAPED_STRING
     
     IDENTIFIER: /[a-zA-Z][a-zA-Z0-9]*/
-    NUMBER: /\d+/
-    NEWLINE: /\n/
+    NUMBER: /\d+(\.\d+)?/
+    ESCAPED_STRING: /"[^"]*"/
+    NEWLINE: /\r?\n/
     
     %import common.WS
     %ignore WS
@@ -156,20 +168,20 @@ class BasicTransformer(Transformer):
 
 # 사용 예제
 def test_basic_parser():
-    # 테스트용 BASIC 코드
-    basic_code = """
-    X = 10
-    IF X > 5 THEN
-        PRINT X
-    ELSE IF X > 0 THEN
-        PRINT "POSITIVE"
-    ELSE
-        PRINT "ZERO OR NEGATIVE"
-    END IF
-    END
-    """
+    # 테스트용 BASIC 코드 (줄바꿈 문제 해결)
+    basic_code = """X = 10
+IF X > 5 THEN
+    PRINT X
+ELSE IF X > 0 THEN
+    PRINT "POSITIVE"
+ELSE
+    PRINT "ZERO OR NEGATIVE"
+END IF
+END
+"""
     
     print("원본 코드:")
+    print(repr(basic_code))
     print(basic_code)
     
     # 방법 1: 문법에서 직접 처리
@@ -187,6 +199,7 @@ def test_basic_parser():
     try:
         preprocessed_code = preprocess_basic_code(basic_code)
         print("전처리된 코드:")
+        print(repr(preprocessed_code))
         print(preprocessed_code)
         
         parser2 = Lark(basic_grammar_v2, parser='lalr')
@@ -202,6 +215,7 @@ def test_basic_parser():
         lexer = BasicLexer()
         tokenized_code = lexer.tokenize(basic_code)
         print("토큰화된 코드:")
+        print(repr(tokenized_code))
         print(tokenized_code)
         
         parser3 = Lark(basic_grammar_v2, parser='lalr')
@@ -211,5 +225,28 @@ def test_basic_parser():
     except Exception as e:
         print(f"파싱 실패: {e}")
 
+# 더 간단한 테스트
+def test_simple():
+    simple_code = """X = 5 * 3
+PRINT X
+END
+"""
+    
+    print("=== 간단한 테스트 ===")
+    print("코드:")
+    print(simple_code)
+    
+    try:
+        parser = Lark(basic_grammar_v2, parser='lalr')
+        tree = parser.parse(simple_code)
+        print("파싱 성공!")
+        print(tree.pretty())
+    except Exception as e:
+        print(f"파싱 실패: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    test_basic_parser()
+    test_simple()  # 먼저 간단한 테스트
+    print("\n" + "="*50 + "\n")
+    test_basic_parser()  # 복잡한 테스트
