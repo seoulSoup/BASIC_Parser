@@ -16,6 +16,8 @@ KEYWORDS = {
     'WHILE','END','LOOP','REPEAT','UNTIL',
     'ON',
     'SUB','SUBEND','DEF','FN','FNEND',
+    'CALL', 'ASSIGN', 'TO',
+    'INTEGER', 'REAL', 'STRING',
 }
 
 # normalize combined keywords for parser convenience
@@ -27,6 +29,9 @@ COMBINED = {
     ('FNEND',): 'FNEND',
     ('SUBEND',): 'SUBEND',
 }
+
+TYPE_KEYWORDS = {'INTEGER', 'REAL', 'STRING'}
+KEYWORDS |= TYPE_KEYWORDS
 
 BUILTINS = {
     'SIN': math.sin, 'COS': math.cos, 'TAN': math.tan,
@@ -62,6 +67,9 @@ def tokenize_line(line):
 
     while i < len(s):
         ch = peek()
+        if ch == '!':
+            i = len(s)
+            break
         if ch.isspace():
             i += 1; continue
         if ch == '"':
@@ -77,17 +85,32 @@ def tokenize_line(line):
             tokens.append(Token('STR', ''.join(buf), i))
             continue
         if ch.isdigit():
+            # 1) 1.E+12와 같은 지수 표현
+            m = re.match(r'\d+\.(\d*)E[+\-]?\d+', s[i:])
+            if m:
+                val = m.group(0)
+                i += len(val)
+                tokens.append(Token('NUM', float(val), i))
+                continue
+            # 2) 1. 과 같은 실수 표현
+            m = re.match(r'\d+\.(?![A-Za-z])', s[i:])
+            if m:
+                val = m.group(0)
+                i += len(val)
+                tokens.append(Token('NUM', float(val), i))
+                continue
+            # 3) 기타 숫자
             m = re.match(r'\d+(\.\d+)?', s[i:])
             val = m.group(0)
             i += len(val)
             tokens.append(Token('NUM', float(val) if '.' in val else int(val), i))
             continue
         if ch.isalpha() or ch == '_':
-            m = re.match(r'[A-Za-z_][A-Za-z0-9_]*', s[i:])
+            m = re.match(r'[A-Za-z_][A-Za-z0-9_]*\$?', s[i:])
             ident = m.group(0).upper()
             i += len(ident)
             # possible combined keywords (lookahead)
-            if ident in {'END','DEF'}:
+            if (not ident.endswith('$')) and (ident in {'END', 'DEF'}):
                 j = i
                 while j < len(s) and s[j].isspace(): j += 1
                 m2 = re.match(r'(IF|SELECT|WHILE|FN)\b', s[j:].upper())
@@ -97,16 +120,25 @@ def tokenize_line(line):
                         i = j + len(m2.group(1))
                         tokens.append(Token('KW', combined, i))
                         continue
-            if ident in KEYWORDS:
+            if (not ident.endswith('$')) and (ident in KEYWORDS):
                 tokens.append(Token('KW', ident, i))
             else:
                 tokens.append(Token('ID', ident, i))
+            continue
+        if ch == '@':
+            i += 1
+            m = re.match(r'[A-Za-z_][A-Za-z0-9_]*\$?', s[i:])
+            if not m:
+                raise SyntaxError('Invalid address token after @')
+            ident = m.group(0).upper()
+            i += len(ident)
+            tokens.append(Token('ADDR', ident, i))
             continue
         # operators & separators
         two = s[i:i+2]
         if two in ('<=','>=','<>'):
             tokens.append(Token('OP', two, i)); i += 2; continue
-        if ch in '+-*/^=(),:;&':
+        if ch in '+-*/^=(),:;&<>':
             tokens.append(Token('OP', ch, i)); i += 1; continue
         # unknown char
         raise SyntaxError(f"Unknown char {ch} at {i}")
@@ -142,6 +174,7 @@ class Parser:
         while self.i < len(self.tokens):
             if self.peek().type == 'EOL': self.i += 1; continue
             lineno = self.expect('LINENUM').val
+            print(lineno)
             stmts = self.parse_statements_until_eol()
             lines[lineno] = stmts
         return lines
@@ -159,6 +192,7 @@ class Parser:
     # ----- statements -----
     def parse_statement(self):
         t = self.peek()
+        print(t)
         if t.type == 'KW':
             kw = t.val
             if kw == 'LET': self.i+=1; return self.parse_assignment()
@@ -181,20 +215,36 @@ class Parser:
             if kw == 'WHILE': self.i+=1; cond = self.parse_expr(); return ('WHILE', cond)
             if kw == 'END_WHILE': self.i+=1; return ('END_WHILE',)
             if kw == 'REPEAT': self.i+=1; return ('REPEAT',)
-            if kw == 'LOOP': self.i+=1; 
-                # optional UNTIL at same line
-                if self.match('KW', {'UNTIL'}):
-                    cond = self.parse_expr()
-                    return ('LOOP_UNTIL', cond)
-                return ('LOOP',)
+            if kw == 'LOOP': self.i+=1; return ('LOOP',)
             if kw == 'DEF_FN': 
                 self.i+=1; return self.parse_def_fn()
+            if kw == 'DEF': 
+                self.i+=1; 
+                # case A: 'DEF', 'FN' <ID>
+                if self.match('KW', {'FN'}):
+                    return self.parse_def_fn()
+                # case B: 'DEF' <ID starting with 'FN'>
+                nxt = self.peek()
+                if nxt.type == 'ID' and nxt.val.startswith('FN'):
+                    return self.parse_def_fn_folded()
+                raise SyntaxError('DEF must be followed by FN <name> or FN<name>')
+
             if kw == 'FNEND':
                 self.i+=1; return ('FNEND',)
             if kw == 'SUB':
                 self.i+=1; return self.parse_sub()
             if kw == 'SUBEND':
                 self.i+=1; return ('SUBEND',)
+            # optional UNTIL at same line
+            if self.match('KW', {'UNTIL'}):
+                cond = self.parse_expr()
+                return ('LOOP_UNTIL', cond)
+            if kw == 'CALL':
+                self.i+=1
+                return self.parse_call_stmt()
+            if kw == 'ASSIGN':
+                self.i += 1
+                return self.parse_assign_addr()
         # default: assignment or bare expression (allow function call without LET)
         return self.parse_assignment_or_expr_stmt()
 
@@ -238,8 +288,12 @@ class Parser:
             return ('ASSIGN', name, expr)
 
     def parse_print_list(self):
+        if self.peek().type in ('EOL',):
+            return []
         items = [self.parse_expr_or_strsep()]
         while self.match('OP', {','}):
+            if self.peek().type == 'EOL':
+                break
             items.append(self.parse_expr_or_strsep())
         return items
 
@@ -294,13 +348,34 @@ class Parser:
     def parse_def_fn(self):
         name = self.expect('ID').val
         self.expect('OP', {'('})
-        params = []
-        if not self.match('OP', {')'}):
-            params.append(self.expect('ID').val)
-            while self.match('OP', {','}):
-                params.append(self.expect('ID').val)
-            self.expect('OP', {')'})
-        return ('DEF_FN', name, params)
+        params, param_types = self.parse_typed_param_list()
+
+        # params = []
+        # if not self.match('OP', {')'}):
+        #     params.append(self.expect('ID').val)
+        #     while self.match('OP', {','}):
+        #         params.append(self.expect('ID').val)
+        self.expect('OP', {')'})
+        return ('DEF_FN', name, params, param_types)
+
+    def parse_def_fn_folded(self):
+        fn_id = self.expect('ID').val
+        
+        if not fn_id.startswith('FN'):
+            raise SyntaxError('Expected Id starting with FN after DEF')
+        name = fn_id[2:]
+        if not name:
+            raise SyntaxError('Missing function name after FN')
+        self.expect('OP', {'('})
+        params, param_types = self.parse_typed_param_list()
+        # params = []
+        # if not self.match('OP', {')'}):
+        #     params.append(self.expect('ID').val)
+        #     while self.match('OP', {','}):
+        #         params.append(self.expect('ID').val)
+        self.expect('OP', {')'})
+        return ('DEF_FN', name, params, param_types)
+        
 
     def parse_sub(self):
         name = self.expect('ID').val
@@ -312,6 +387,47 @@ class Parser:
                 params.append(self.expect('ID').val)
             self.expect('OP', {')'})
         return ('SUB', name, params)
+        
+    def parse_typed_param_list(self):
+        def add_param(ident, tname):
+            params.append(ident)
+            if ident.endswith('$'):
+                param_types[ident] = 'STRING'
+            else:
+                param_types[ident] = tname
+        params = []
+        param_types = {}
+        current_type = 'REAL'
+
+        if self.match('OP', {')'}):
+            return [], {}
+        while True:
+            t = self.peek()
+            print(t)
+            if t.type == 'KW' and t.val in TYPE_KEYWORDS:
+                self.i += 1
+                current_type = t.val
+                ident = self.expect('ID').val
+                add_param(ident, current_type)
+
+                while True:
+                    if (self.peek().type == 'OP' and self.peek().val == ',' and self.i + 1 < len(self.tokens) and self.tokens[self.i + 1].type == 'ID'):
+                        self.i += 1
+                        ident = self.expect('ID').val
+                        add_param(ident, current_type)
+                    else:
+                        break
+            else:
+                ident = self.expect('ID').val
+                add_param(ident, current_type)
+
+            if self.match('OP', {','}):
+                continue
+            elif self.peek().type == 'OP' and self.peek().val == ')':
+                break
+            else:
+                raise SyntaxError(f'Unexpected token in parameter list: {self.peek()}')
+        return params, param_types
 
     # ----- expressions -----
     # Pratt parser
@@ -428,7 +544,20 @@ class Parser:
                 args.append(self.parse_expr())
             self.expect('OP', {end_op})
         return args
+    
+    def parse_call_stmt(self):
+        args = []
+        name = self.expect('ID').val
+        args = []
+        if self.match('OP', {'('}):
+            args = self.parse_expr_list_unitl(')')
+            return ('CALL_STMT', name, args)
 
+    def parse_assign_addr(self):
+        addr_tok = self.expect('ADDR')
+        self.expect('KW', {'TO'})
+        rhs = self.parse_expr()
+        return ('ASSIGN_ADDR', addr_tok.val, rhs)
 
 # =========================
 # Interpreter
@@ -600,6 +729,9 @@ class BasicRuntime:
         elif typ == 'EXPR':
             self.eval_expr(st[1])
         elif typ == 'PRINT':
+            if not st[1]:
+                print()
+                return None
             out_parts = []
             for item in st[1]:
                 if item[0] == 'SEMI':
@@ -745,6 +877,21 @@ class BasicRuntime:
                 return 'JUMP'
             else:
                 self.repeat_stack.pop()
+        elif typ == 'CALL_STMT':
+            name, args_nodes = st[1], st[2]
+            args = [self.eval_expr(a) for a in arg_nodes]
+            U = name.upper()
+            if U in self.subroutines:
+                self.call_subroutine(U, args)
+            elif U in self.functions:
+                params, body = self.functions[U]
+                if len(params) != len(args):
+                    raise RuntimeError('FN arg count mismatch!')
+                saved = dict(self.vars)
+                for p, v in zip(params, args):
+                    self.vars[p.upper()] = v
+                _ = self._execute_block(body, fn_mode=True)
+                self.vars = saved
         else:
             raise RuntimeError(f"Unknown stmt {st}")
         return None
@@ -823,8 +970,9 @@ def parse_program(text):
     # tokenize each physical line; then feed to Parser
     tokens = []
     for raw in text.splitlines():
+        # print(raw)
         raw = raw.rstrip()
-        if raw.strip()=='' or raw.strip().startswith("'"):  # allow apostrophe comments
+        if raw.strip()=='' or raw.strip().startswith("!"):  # allow apostrophe comments
             continue
         toks = tokenize_line(raw)
         tokens.extend(toks)
