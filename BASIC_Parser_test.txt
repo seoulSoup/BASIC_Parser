@@ -1,0 +1,129 @@
+# ---------------------- 테스트 코드 ----------------------
+basic_code = """
+62568 DEF FNCap_hpl4_nf2(Type$,INTEGER High_pad,Lo,Lo2,Lo3,Lo4,REAL Vstart,Vstop,Vstep,Vd1,Cap_frequency,Osclevel,D_time,REAL Out_var2,Out_var)
+62569   !-,1~+44,-1~+44,-1~+44,-1~+44,-1~+44,-100~+100,-100~+100,-100~+100,-100~+100,+20~+1000000,+,.001~300,-,-
+62570   !-------------------------------------------------
+62571   !- Except Stray Cap. at meas. cap
+62572   !-------------------------------------------------
+62573   COM /Port/ INTEGER Port(*)
+62574   COM /Pin_table/ INTEGER P(*)
+62575   COM /Cap/ INTEGER Capflag,REAL Cap,S_para
+62576   COM /Tag/ INTEGER Tag,Tag1
+62577   COM /Points/ INTEGER Wa,Po,No
+62578   COM /Info/ Devicename$,T_sys$,Run_no$,Wf$,Employee$,Listfile$,Wafer_no$(*),Rwf$,Sheet_no$,Cmts$,Pgm$,Sdate$
+62579   COM /Stray_cap/ INTEGER Cap_count,Switch_box,Lock,Integer_a,REAL Cap_value(*),Item_value(*),Dummy_value(*),Real_a
+62580   !
+62581   INTEGER N,Icount
+62582   Icount=ABS(INT((Vstop-Vstart)/Vstep))+1
+62583   !
+62584   ALLOCATE REAL Cv(Icount,2),Te_cv(Icount,3),Volts(Icount),Disp_f(Icount),G_value(Icount)
+62585   !
+62586   !-------------------------------------------------
+62587   !- DUT Connection
+62588   !-------------------------------------------------
+62589   !
+62590   FOR I=1 TO 44
+62591     CALL Connect(FNPort(0,3),P(I))
+62592   NEXT I
+62593   !
+62594   !
+62595   SELECT High_pad
+62596   CASE 1
+62597     FOR I=1 TO 44
+62598       SELECT I
+62599       CASE 20,21,22,23,24,25,26
+62600         Connect(FNPort(1,7),P(I))
+62601       END SELECT
+62602     NEXT I
+62603   !
+62604   CASE 2
+62605     FOR I=1 TO 44
+62606       SELECT I
+62607       CASE 20,21,22,23,24,25
+62608         Connect(FNPort(1,7),P(I))
+62609       END SELECT
+62610     NEXT I
+62611   CASE 3
+62612     FOR I=1 TO 44
+62613       SELECT I
+62614       CASE 18,19,20,21,22,23,29
+62615         Connect(FNPort(1,7),P(I))
+62616       END SELECT
+62617     NEXT I
+62618   CASE 4
+62619     FOR I=1 TO 44
+62620       SELECT I
+62621       CASE 18,19,20,21,22,23
+62622         Connect(FNPort(1,7),P(I))
+62623       END SELECT
+62624     NEXT I
+62625   !
+62626   !
+62627   END SELECT
+62628   !
+62629   Connect(FNPort(1,8),Lo)
+62630   IF Lo2>0 THEN CALL Connect(FNPort(1,8),Lo2)
+62631   IF Lo3>0 THEN CALL Connect(FNPort(1,8),Lo3)
+62632   IF Lo4>0 THEN CALL Connect(FNPort(1,8),Lo4)
+62633   !
+62634   Set_cmu(2,0,Osclevel)
+62635   Frequency(Cap_frequency)
+62636   IF Lock=0 THEN 
+62637     CALL Offsetcap
+62638   ELSE
+62639     Cap_count=Cap_count+1
+62640     S_para=Cap_value(Cap_count)
+62641   END IF
+62642   !
+62643   !============================================================
+62644   MASS STORAGE IS "/users/epm/data/r3eng/rawdata_r3epm"
+62645   ON ERROR GOTO Sjy
+62646 Sjy:IF FNFile$=FNFile$ AND Wa=1 AND Po=1 AND No=1 THEN 
+62647     ON ERROR GOTO Sjy1
+62648     PURGE FNFile$
+62649     OFF ERROR 
+62650 Sjy1:OFF ERROR 
+62651   END IF
+62652   ON ERROR GOTO 62657
+62653   CREATE FNFile$,1
+62654   ASSIGN @Path TO FNFile$;FORMAT ON,EOL CHR$(10),APPEND
+62655   OUTPUT @Path;FNFile$
+62656   ASSIGN @Path TO *
+62657   OFF ERROR 
+62658   ASSIGN @Path TO FNFile$;FORMAT ON,EOL CHR$(10),APPEND
+62659   OUTPUT @Path;"++++++++++ Point";Po;"++++++++++++"
+62660   ! OUTPUT @Path;"++++++++++ Wn_no";Wa;"++++++++++++"
+62661   OUTPUT @Path;"++++++++++";Type$;"++++++++++++"
+62662   OUTPUT @Path;"Gate_v, Cap, D_factor, Conductance"
+62663   Force_v(FNPort(0,3),Vd1,Vd1,1.E-2)
+62664   !
+62665   I=0
+62666   FOR Vtemp=Vstart TO Vstop+(Vstep/10.) STEP Vstep
+62667     I=I+1
+62668     Force_v(FNPort(1,7),Vtemp)
+62669     Wait_th(D_time)
+62670     Measure_cpg(Te_cv(I,1),G_value(I))
+62671     Volts(I)=Vtemp
+62672   NEXT Vtemp
+62673   !
+62674   FOR I=1 TO Icount
+62675     Cv(I,1)=Te_cv(I,1)-S_para
+62676   !
+62677     ON ERROR GOTO Exit_disp
+62678     Disp_f(I)=G_value(I)/(2*PI*Cap_frequency*Cv(I,1))
+62679 Exit_disp:OFF ERROR 
+62680   !
+62681     OUTPUT @Path;Volts(I),Cv(I,1),Disp_f(I),G_value(I)
+62682   NEXT I
+62683   ASSIGN @Path TO *
+62684   Tag=1
+62685   !
+62686   Disable_port
+62687   Connect
+62688   !
+62689   Out_var=Cv(1,1)
+62690   Out_var2=Cv(Icount,1)
+62691   RETURN Cv(1,1)
+62692   DEALLOCATE Cv(*),Te_cv(*),Volts(*),Disp_f(*),G_value(*)
+62693 FNEND
+"""
