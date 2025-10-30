@@ -343,3 +343,24 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+GrammarError: Reduce/Reduce collision in Terminal('COMMA') between the following rules: 
+	- <primary : STRING>
+	- <output_item : STRING>
+
+Reduce/Reduce collision in Terminal('NUMBER') between the following rules: 
+	- <primary : STRING>
+	- <output_item : STRING>
+
+Reduce/Reduce collision in Terminal('NEWLINE') between the following rules: 
+	- <primary : STRING>
+	- <output_item : STRING>
+
+Reduce/Reduce collision in Terminal('$END') between the following rules: 
+	- <primary : STRING>
+	- <output_item : STRING>
+
+Reduce/Reduce collision in Terminal('SEMI') between the following rules: 
+	- <primary : STRING>
+	- <output_item : STRING>
