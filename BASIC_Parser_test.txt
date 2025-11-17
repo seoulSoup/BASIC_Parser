@@ -1,6 +1,4 @@
-# ---------------------- 테스트 코드 ----------------------
-basic_code = """
-62568 DEF FNCap_hpl4_nf2(Type$,INTEGER High_pad,Lo,Lo2,Lo3,Lo4,REAL Vstart,Vstop,Vstep,Vd1,Cap_frequency,Osclevel,D_time,REAL Out_var2,Out_var)
+BASIC_CODE = r"""62568 DEF FNCap_hpl4_nf2(Type$,INTEGER High_pad,Lo,Lo2,Lo3,Lo4,REAL Vstart,Vstop,Vstep,Vd1,Cap_frequency,Osclevel,D_time,REAL Out_var2,Out_var)
 62569   !-,1~+44,-1~+44,-1~+44,-1~+44,-1~+44,-100~+100,-100~+100,-100~+100,-100~+100,+20~+1000000,+,.001~300,-,-
 62570   !-------------------------------------------------
 62571   !- Except Stray Cap. at meas. cap
@@ -126,4 +124,6 @@ basic_code = """
 62691   RETURN Cv(1,1)
 62692   DEALLOCATE Cv(*),Te_cv(*),Volts(*),Disp_f(*),G_value(*)
 62693 FNEND
+62694 Value=FNCap_hpl4_nf2(Name$(No),1,P(2),P(3),-1,-1,-4,4,0.1,4,1000,.03,.01,Na,Na)
+62695 PRINT Value
 """
